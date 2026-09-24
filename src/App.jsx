@@ -29,8 +29,21 @@ const CATEGORIES = [
   { id: 'lazer', name: 'Lazer', color: '#DB2777', bg: '#FDF2F8', border: '#FBCFE8', icon: Smile },
 ];
 
-const getTodayString = () => new Date().toISOString().split('T')[0];
-const getTomorrowString = () => new Date(Date.now() + 86400000).toISOString().split('T')[0];
+// Helper seguro para obter data local no formato YYYY-MM-DD
+const getLocalDateString = (dateObj = new Date()) => {
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const day = String(dateObj.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const getTodayString = () => getLocalDateString(new Date());
+
+const getTomorrowString = () => {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  return getLocalDateString(tomorrow);
+};
 
 const INITIAL_TASKS = [
   {
@@ -67,23 +80,28 @@ const INITIAL_TASKS = [
   }
 ];
 
+const LOCAL_STORAGE_KEY = 'tarefas_diarias_app_v2';
+
 export default function App() {
   // Carrega as tarefas salvas do LocalStorage ou usa as tarefas iniciais de exemplo
   const [tasks, setTasks] = useState(() => {
     try {
-      const savedTasks = localStorage.getItem('tarefas_diarias_app_v1');
-      return savedTasks ? JSON.parse(savedTasks) : INITIAL_TASKS;
+      const savedTasks = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (savedTasks) {
+        const parsed = JSON.parse(savedTasks);
+        if (Array.isArray(parsed)) return parsed;
+      }
     } catch (error) {
       console.error('Erro ao ler do LocalStorage:', error);
-      return INITIAL_TASKS;
     }
+    return INITIAL_TASKS;
   });
 
   const [selectedCategoryFilter, setSelectedCategoryFilter] = useState('todas');
   const [selectedDateFilter, setSelectedDateFilter] = useState('hoje'); // 'hoje', 'proximos', 'todas', 'custom'
   const [customDate, setCustomDate] = useState(getTodayString());
   
-  // Modal State for New Task
+  // Modal State para Nova Tarefa
   const [modalVisible, setModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('pessoal');
@@ -92,10 +110,10 @@ export default function App() {
 
   const todayStr = getTodayString();
 
-  // Salva no LocalStorage sempre que a lista de tarefas for modificada
+  // Persistência em LocalStorage a cada alteração
   useEffect(() => {
     try {
-      localStorage.setItem('tarefas_diarias_app_v1', JSON.stringify(tasks));
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(tasks));
     } catch (error) {
       console.error('Erro ao salvar no LocalStorage:', error);
     }
@@ -109,13 +127,15 @@ export default function App() {
       id: Date.now().toString(),
       title: newTitle.trim(),
       category: newCategory,
-      date: newDate,
+      date: newDate || todayStr,
       time: newTime || '12:00',
       completed: false,
     };
 
-    setTasks([newTask, ...tasks]);
+    setTasks(prevTasks => [newTask, ...prevTasks]);
     setNewTitle('');
+    setNewDate(todayStr);
+    setNewTime('12:00');
     setModalVisible(false);
   };
 
@@ -133,12 +153,12 @@ export default function App() {
 
   const filteredTasks = useMemo(() => {
     return tasks.filter(task => {
-      // Category Filter
+      // Filtro por Categoria
       if (selectedCategoryFilter !== 'todas' && task.category !== selectedCategoryFilter) {
         return false;
       }
 
-      // Date Filter
+      // Filtro por Data
       if (selectedDateFilter === 'hoje') {
         return task.date === todayStr;
       } else if (selectedDateFilter === 'proximos') {
@@ -151,7 +171,7 @@ export default function App() {
     });
   }, [tasks, selectedCategoryFilter, selectedDateFilter, customDate, todayStr]);
 
-  // Daily Statistics
+  // Estatísticas do Dia
   const todayTasks = tasks.filter(t => t.date === todayStr);
   const completedTodayTasks = todayTasks.filter(t => t.completed);
   const completionPercentage = todayTasks.length > 0 
@@ -163,9 +183,13 @@ export default function App() {
   };
 
   const formatDateDisplay = (dateString) => {
+    if (!dateString) return '';
     if (dateString === todayStr) return 'Hoje';
-    const [year, month, day] = dateString.split('-');
-    return `${day}/${month}/${year}`;
+    const parts = dateString.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateString;
   };
 
   return (
@@ -180,7 +204,10 @@ export default function App() {
             <h1 className="text-2xl font-bold text-slate-900 leading-tight">Minhas Tarefas</h1>
           </div>
           <button
-            onClick={() => setModalVisible(true)}
+            onClick={() => {
+              setNewDate(getTodayString());
+              setModalVisible(true);
+            }}
             className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2.5 rounded-full shadow-lg shadow-indigo-200 active:scale-95 transition-all cursor-pointer"
           >
             <Plus size={18} />
@@ -269,7 +296,7 @@ export default function App() {
               </button>
             </div>
 
-            {/* Custom Date Picker Dropdown if custom selected */}
+            {/* Custom Date Picker Dropdown */}
             {selectedDateFilter === 'custom' && (
               <div className="mt-2.5 p-2.5 bg-white rounded-xl border border-slate-200 flex items-center justify-between text-xs">
                 <span className="text-slate-500 font-medium">Escolher data:</span>
